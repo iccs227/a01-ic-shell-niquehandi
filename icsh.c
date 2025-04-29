@@ -4,7 +4,6 @@
  */
 
 #include "stdio.h"
-#include "sys/wait.h"
 #include "stdlib.h"
 #include "string.h"
 #include "unistd.h"
@@ -105,12 +104,12 @@ int main() {
 
     while (1) {
         printf("icsh $ ");
-        fflush(stdout);  //Ensure the prompt is shown immediately
+        fflush(stdout); // Ensure prompt is shown immediately
 
         if (!fgets(buffer, MAX_CMD_BUFFER, stdin))
             break;
 
-        buffer[strcspn(buffer, "\n")] = '\0';  // Strip new line
+        buffer[strcspn(buffer, "\n")] = '\0'; // Strip newline
 
         if (strcmp(buffer, "!!") == 0) {
             if (latest[0] == '\0') {
@@ -128,31 +127,18 @@ int main() {
 
         if (strncmp(buffer, "exit", 4) == 0) {
             int code = 0;
-            sscanf(buffer + 4, "%d", &code); 
+            sscanf(buffer + 4, "%d", &code);
             code &= 0xFF;
             printf("bye\n");
             exit(code);
         }
 
-        pid_t pid = fork();
-        if (pid < 0) {
-            perror("Fork Failed !!!");
-            exit(EXIT_FAILURE);
-        }
-
-        if (pid == 0) {
-            // Child process
-            if (strncmp(buffer, "echo ", 5) == 0) {
-                printf("%s\n", buffer + 5);
-                _exit(0);
-            } else {
-                printf("Bad Command!\n");
-                _exit(1);
-            }
+        if (strncmp(buffer, "echo ", 5) == 0) {
+            printf("%s\n", buffer + 5);
         } else {
-            int state;
-            waitpid(pid, &state, 0);
+            printf("Bad Command!\n");
         }
     }
+
     return 0;
 }
