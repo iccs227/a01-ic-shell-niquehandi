@@ -90,33 +90,38 @@ void StartMsg() {
 
 
 
-
-
-
-
-
-
-int main() {
+int main(int argc, char *argv[]) {
     StartMsg();
 
     char buffer[MAX_CMD_BUFFER];
     char latest[MAX_CMD_BUFFER] = "";
+    FILE *input = stdin;
+
+    //Script
+    if (argc == 2) {
+        input = fopen(argv[1], "r");
+        if (!input) {
+            perror("Failed to open script file");
+            return 1;
+        }
+    }
 
     while (1) {
-        printf("icsh $ ");
-        fflush(stdout); // Ensure prompt is shown immediately
+        if (input == stdin)
+            printf("icsh $ ");
 
-        if (!fgets(buffer, MAX_CMD_BUFFER, stdin))
+        fflush(stdout);
+
+        if (!fgets(buffer, MAX_CMD_BUFFER, input))
             break;
 
-        buffer[strcspn(buffer, "\n")] = '\0'; // Strip newline
+        buffer[strcspn(buffer, "\n")] = '\0';  // Remove newline
 
         if (strcmp(buffer, "!!") == 0) {
             if (latest[0] == '\0') {
                 printf("No Prev Command!\n");
                 continue;
             }
-            printf("%s\n", latest);
             strcpy(buffer, latest);
         } else {
             strcpy(latest, buffer);
@@ -130,7 +135,11 @@ int main() {
             sscanf(buffer + 4, "%d", &code);
             code &= 0xFF;
             printf("bye\n");
-            exit(code);
+
+            if (input != stdin) {
+                fclose(input);
+            }
+            exit(code);  
         }
 
         if (strncmp(buffer, "echo ", 5) == 0) {
@@ -138,6 +147,9 @@ int main() {
         } else {
             printf("Bad Command!\n");
         }
+    }
+    if (input != stdin) {
+        fclose(input);
     }
 
     return 0;
