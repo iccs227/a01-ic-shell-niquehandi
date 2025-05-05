@@ -7,7 +7,8 @@
 #include "stdlib.h"
 #include "string.h"
 #include "unistd.h"
-
+#include "sys/types.h"
+#include "sys/wait.h"
 
 
 #define MAX_CMD_BUFFER 255
@@ -88,6 +89,44 @@ void StartMsg() {
 
 
 
+void runExternalCommand(char *inputLine){
+    if(inputLine == NULL || inputLine[0] == '\0') 
+        return;
+    char *saveptr;
+    
+    char *args[MAX_CMD_BUFFER];
+    char arg_count = 0;
+
+
+    char *token = strtok_r(inputLine, " ", &saveptr);
+    while (token && arg_count < MAX_CMD_BUFFER-1)
+    {
+        args[arg_count++] = token;
+        token = strtok_r(NULL, " ", &saveptr);
+    }
+    args[arg_count] = NULL;
+
+    if(arg_count == 0) return;
+
+
+
+    pid_t pid = fork();
+    if(pid < 0){
+        perror("Fork Failed");
+
+    }else if(pid == 0){
+        execvp(args[0], args);
+        fprintf(stderr, "Bad Command! '%s'\n", args[0]);
+        _exit(1);
+
+    }else
+        waitpid(pid,NULL, 0);
+
+}
+
+
+
+
 
 
 int main(int argc, char *argv[]) {
@@ -145,8 +184,12 @@ int main(int argc, char *argv[]) {
         if (strncmp(buffer, "echo ", 5) == 0) {
             printf("%s\n", buffer + 5);
         } else {
-            printf("Bad Command!\n");
+            runExternalCommand(buffer);
+            //printf("Bad Command!\n");
         }
+
+
+
     }
     if (input != stdin) {
         fclose(input);
@@ -154,3 +197,6 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
+
+
+
