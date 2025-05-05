@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
 
         if (strncmp(buffer, "exit", 4) == 0) {
             int code = 0;
-            sscanf(buffer + 4, "%d", &code);
+            sscanf(buffer + 4, " %d", &code);
             code &= 0xFF;
             printf("bye\n");
 
