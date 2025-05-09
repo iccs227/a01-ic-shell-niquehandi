@@ -9,134 +9,107 @@
 #include "unistd.h"
 #include "sys/types.h"
 #include "sys/wait.h"
-
-
+#include "signal.h"
 #define MAX_CMD_BUFFER 255
+#include "kirby.h"
 
 
-void StartMsg() {
-    // Kirbyyyyy
-    const char* Kirby[] = {
-        "           ***********",
-        "       ****--------=****",
-        "     ***--------------=***",
-        "   #**=-----::::--------+**             **************",
-        "  ##*-------:::::--------+**      ********+========++********",
-        " ##*=--------:::----------** ******==---------------------=+******",
-        " ##=----------------------+***+=-------------------------------=+****",
-        "##*-----------------------=*+--------------------------------------+****",
-        "##+=----------------------=*+---------:-:::::-------------------------+***",
-        "##===---------------------=+-----:::::::::::::::::----------------------+*** ************",
-        "##====--------------------=---:::::::::::::::::::::::---------------------+*** ************",
-        "##=====----------------------:::::::::::::::::::::::--+*+=------------------*****++=---=++*****",
-        "##=========-==-------------::::::-+**=-::::::::::::-#%%*=+%%@=---------------------------------****",
-        "##+==============---------::::::*@#=+#@=:::::::::::+%%=.  .#@=----------------------------------***",
-        "##+===============--------:::::=@+.  .*@-:::::::::-%%#.    :%%-----------------------------------+**",
-        "##*=================------::::-#%%:.   :%%#:::::::::-@%%    :%%@=-----------------------------------***",
-        " ##+==============--------::::-@%%-.   :%%@-::::::::-@@#-  .#@@+-------------------=---------------+##",
-        " ###=============----------:::-@@#:  :#@@=:::::::::@@@@%%@@@@#-------------------==-------------==##",
-        "  ##+============----------:::-@@@@%%@@@@+:::::::::#@@@@@@@@@%%-------------------===------------==##",
-        "  ###+===========----------:::-%%@@@@@@@@@*:::::::::=@@@@@@@@@@-------------------===-----------==+##",
-        "   ##*+=========------------:::+@@@@@@@@@*::::::::::@@%%%%%%@%%-------------------====--------====*##",
-        "    ##*+=======--------------::-@%%%%%%%@+::::::::::*@%%%%%%@+------------------======-----=====*##",
-        "     ##*+====------------------:#@%%%%%%@-:::::::::::@@####%@------------------========-======++##",
-        "      ##*+===--------------------@%####@%%:::::::::----#@##%@=----==========----============+++*##",
-        "       ##====-----------====------%@%%@#::::::::-------:-=:-----=============--======++++++++###",
-        "       ##====-------==========-----::::------=++**++-------------===================+++++++###",
-        "       ##=====-----============-----------#%%%%%%%%%%%-------------=================++++*###",
-        "       ##+====-----==========------------#%%%#######%%=------------------==========+++####",
-        "       ##+=====-------===----------------=%%###***##%%#--------------=============+++++##",
-        "       ##+=====---------------------------=#########*------------========++********#####",
-        "       ###======----------------------------=%#####------------=====+*********+++++++**####",
-        "        ##*======------------------------------------------======+**********++++++++++***####",
-        "         ##+======----------------------------------------====+************+++++++++*******###",
-        "         ##*========------------------------------------====+***************+++++********#**##",
-        "          ##+========---------------------------------=====***************************#####*###",
-        "           ##+++=============-----------------========+*********************##############*###",
-        "            ##*++++===================-==============+******************##################*##",
-        "              ###+++++++=============================+****************####################*###",
-        "               ###+++++++++=========================+***************#########################",
-        "               %%#**++++++++++++===================+**************########################%%#",
-        "               #%#*##*++++++++++++++++++++++++++++++************########################%%#",
-        "               %%#*#####+++++++++++++++++++++++++++***********#########################%%%",
-        "               %%#**######*++++++++++++++++++++++++***###****#######################*#%%",
-        "               %%#***#########+++++++++++++++++++++**##############################*%%%",
-        "               %%#****############+++++++++++++++++***###########################*%%%",
-        "               %%%******#################*++++++++++**#########################*#%%",
-        "                %%#*********#######################%%%*######################*#%%",
-        "                 %%*************###################%%%%#*#################**%%%%",
-        "                 %%#****************###############%%#%%%#**##########***#%%%%",
-        "                 ###*********+++++*****############%%%  %%%%%###**###%%%%%%",
-        "                  ###*******+++++++++*****#########%%#     %%%%%%%%%%%%",
-        "                   ###******++++++++++******#######%%",
-        "                    ###*****+++++++++++*******#####%%",
-        "                     ###*****+++++++++********#####%%",
-        "                      ###********************#####%%%",
-        "                        ###*****************#####%%%",
-        "                         ####**************######%%",
-        "                           #####********#######%%%",
-        "                              ###%###########%%%",
-        "                                  #%%%%%%%%%%%",
-        "",
-        "Starting IC Shell"
-    };
 
-    // PrintKirby
-    for (int i = 0; i < sizeof(Kirby) / sizeof(Kirby[0]); i++) {
-        printf("%s\n", Kirby[i]);
+
+pid_t FgPid = -1;
+int LastExitCode = 0;
+ 
+void ctrlC(int sig) {
+    if (FgPid > 0) {
+        kill(FgPid, SIGINT);
+    } else {
+        write(STDOUT_FILENO, "\nicsh $ ", 8);
+        fflush(stdout);
+     }
+}
+ 
+void ctrlZ(int sig) {
+    if (FgPid > 0) {
+        kill(FgPid, SIGTSTP);
+    }else {        
+        write(STDOUT_FILENO, "\nicsh $ ", 8);
+        fflush(stdout);
     }
 }
-
-
-
-void runExternalCommand(char *inputLine){
-    if(inputLine == NULL || inputLine[0] == '\0') 
+ 
+void runExternalCommand(char *inputLine) {
+    if (inputLine == NULL || inputLine[0] == '\0') 
         return;
+     
     char *saveptr;
-    
     char *args[MAX_CMD_BUFFER];
-    char arg_count = 0;
-
-
+    int arg_count = 0;
+ 
     char *token = strtok_r(inputLine, " ", &saveptr);
-    while (token && arg_count < MAX_CMD_BUFFER-1)
-    {
+    while (token && arg_count < MAX_CMD_BUFFER-1) {
         args[arg_count++] = token;
         token = strtok_r(NULL, " ", &saveptr);
-    }
+     }
     args[arg_count] = NULL;
-
-    if(arg_count == 0) return;
-
-
-
+ 
+    if (arg_count == 0) return;
+ 
     pid_t pid = fork();
-    if(pid < 0){
+    if (pid < 0) {
         perror("Fork Failed");
 
-    }else if(pid == 0){
+    }else if (pid == 0) {
+
+        signal(SIGINT, SIG_DFL);
+        signal(SIGTSTP, SIG_DFL);
         execvp(args[0], args);
         fprintf(stderr, "Bad Command! '%s'\n", args[0]);
         _exit(1);
 
-    }else
-        waitpid(pid,NULL, 0);
+    }else {    
 
+        FgPid = pid; 
+        int status;
+        waitpid(pid, &status, WUNTRACED);
+        FgPid = -1;   
+ 
+        if (WIFEXITED(status))
+            LastExitCode = WEXITSTATUS(status);
+        else if (WIFSIGNALED(status))
+            LastExitCode = 128 + WTERMSIG(status);
+        else if (WIFSTOPPED(status)) {
+            LastExitCode = 128 + WSTOPSIG(status);
+            printf("[%d]+  Stopped\t\t%s\n", pid, inputLine);
+        }
+    }
 }
-
-
-
-
-
-
+ 
+void printPrompt() {
+    write(STDOUT_FILENO, "icsh $ ", 7);
+    fflush(stdout);
+}
+ 
 int main(int argc, char *argv[]) {
-    StartMsg();
 
+
+    //signal handlers
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = ctrlC;
+    sa.sa_flags = SA_RESTART;  
+    sigaction(SIGINT, &sa, NULL);
+    
+    sa.sa_handler = ctrlZ;
+    sigaction(SIGTSTP, &sa, NULL);
+    
+    StartMsg();
     char buffer[MAX_CMD_BUFFER];
+    char execBuffer[MAX_CMD_BUFFER];
     char latest[MAX_CMD_BUFFER] = "";
     FILE *input = stdin;
 
-    //Script
+
+
     if (argc == 2) {
         input = fopen(argv[1], "r");
         if (!input) {
@@ -144,59 +117,68 @@ int main(int argc, char *argv[]) {
             return 1;
         }
     }
-
+ 
     while (1) {
-        if (input == stdin)
-            printf("icsh $ ");
+        if (input == stdin) {
+            printPrompt();
+        }
+        
+        if (!fgets(buffer, MAX_CMD_BUFFER, input)) {
+            if (feof(input)) break;
+            if (ferror(input)) {
+                clearerr(input);
+                continue;
+            }
+        }
 
-        fflush(stdout);
+        buffer[strcspn(buffer, "\n")] = '\0';
 
-        if (!fgets(buffer, MAX_CMD_BUFFER, input))
-            break;
-
-        buffer[strcspn(buffer, "\n")] = '\0';  // Remove newline
 
         if (strcmp(buffer, "!!") == 0) {
             if (latest[0] == '\0') {
                 printf("No Prev Command!\n");
                 continue;
             }
-            strcpy(buffer, latest);
-        } else {
-            strcpy(latest, buffer);
-        }
-
-        if (buffer[0] == '\0')
-            continue;
-
-        if (strncmp(buffer, "exit", 4) == 0) {
-            int code = 0;
-            sscanf(buffer + 4, " %d", &code);
-            code &= 0xFF;
-            printf("bye\n");
-
-            if (input != stdin) {
-                fclose(input);
+            strcpy(execBuffer, latest);
+            if (input == stdin) {
+               printf("%s\n", execBuffer);
             }
-            exit(code);  
+
+        }else{
+            if (buffer[0] == '\0') {
+                continue;
+            }
+            strcpy(latest, buffer);
+            strcpy(execBuffer, buffer);
         }
 
-        if (strncmp(buffer, "echo ", 5) == 0) {
-            printf("%s\n", buffer + 5);
-        } else {
-            runExternalCommand(buffer);
-            //printf("Bad Command!\n");
+        if (strncmp(execBuffer, "exit", 4) == 0 &&
+            (execBuffer[4] == '\0' || execBuffer[4] == ' ')) {
+            int code = 0;
+            sscanf(execBuffer + 4, " %d", &code);
+            code &= 0xFF;
+            if (input == stdin) {
+                printf("bye\n");
+            }
+            if (input != stdin)
+                fclose(input);
+            exit(code);
+        }
+        if(strncmp(execBuffer, "echo ", 5) == 0) {
+            if (strcmp(execBuffer + 5, "$?") == 0) {
+            printf("%d\n", LastExitCode);
+            } else {
+            printf("%s\n", execBuffer + 5);
+            LastExitCode = 0;
+            }
+    continue;
         }
 
-
-
+    
+    runExternalCommand(execBuffer);
     }
     if (input != stdin) {
-        fclose(input);
+    fclose(input);
     }
-
     return 0;
 }
-
-
-

@@ -1,13 +1,17 @@
-CC=gcc
-CFLAGS=-Wall -g 
-BINARY=icsh
+CC = gcc
+CFLAGS = -Wall -g
+BINARY = icsh
+OBJS = icsh.o kirby.o
 
-all: icsh
+all: $(BINARY)
 
-icsh: icsh.c
-	$(CC) -o $(BINARY) $(CFLAGS) $<
+$(BINARY): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 .PHONY: clean
 
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) *.o

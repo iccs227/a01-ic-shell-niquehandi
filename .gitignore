@@ -1,2 +1,4 @@
 *.dSYM/
 icsh
+kirby.o
+icsh.o

@@ -2,3 +2,8 @@
 # ICSH
 
 Please describe your assumptions and/or implementation here. 
+
+
+**References:**
+waitpid, wnohang, wuntraced. How do I use these
+https://stackoverflow.com/questions/33508997/waitpid-wnohang-wuntraced-how-do-i-use-these
