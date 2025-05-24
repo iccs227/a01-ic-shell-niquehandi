@@ -12,13 +12,16 @@
 #include "signal.h"
 #define MAX_CMD_BUFFER 255
 #include "kirby.h"
-
-
-
+#include "fcntl.h"  
+#include "errno.h"  
 
 pid_t FgPid = -1;
 int LastExitCode = 0;
  
+
+
+
+
 void ctrlC(int sig) {
     if (FgPid > 0) {
         kill(FgPid, SIGINT);
@@ -45,29 +48,90 @@ void runExternalCommand(char *inputLine) {
     char *args[MAX_CMD_BUFFER];
     int arg_count = 0;
  
-    char *token = strtok_r(inputLine, " ", &saveptr);
+    //Created a copy of the inputLine for tokenizations
+    char input_copy[MAX_CMD_BUFFER];
+    strncpy(input_copy, inputLine, MAX_CMD_BUFFER - 1);
+    input_copy[MAX_CMD_BUFFER - 1] = '\0';
+    
+    char *token = strtok_r(input_copy, " ", &saveptr);
     while (token && arg_count < MAX_CMD_BUFFER-1) {
         args[arg_count++] = token;
         token = strtok_r(NULL, " ", &saveptr);
-     }
+    }
     args[arg_count] = NULL;
  
     if (arg_count == 0) return;
+
+    char *input_file = NULL;
+    char *output_file = NULL;
+    int new_arg_count = 0;
+    
+    for (int i = 0; i < arg_count; i++) {
+        if (strcmp(args[i], "<") == 0) {
+            if (i + 1 < arg_count) {
+                input_file = args[i + 1];
+                i++; 
+            }
+        } else if (strcmp(args[i], ">") == 0) {
+            if (i + 1 < arg_count) {
+                output_file = args[i + 1];
+                i++; 
+            }
+        } else {
+            args[new_arg_count++] = args[i];
+        }
+    }
+    args[new_arg_count] = NULL; 
+
+
+    if(args[0] == NULL) {
+        fprintf(stderr, "Error No COMMAND! Specified\n");
+        return;
+    }
+    if (input_file == NULL && strchr(inputLine, '<')) {
+    fprintf(stderr, "Error: Missing redirection file.\n");
+    LastExitCode = 1;
+    return;
+    }
+    if (output_file == NULL && strchr(inputLine, '>')) {
+    fprintf(stderr, "Error: Missing output redirection file.\n");
+    LastExitCode = 1;
+    return;
+    }
  
     pid_t pid = fork();
     if (pid < 0) {
         perror("Fork Failed");
-
-    }else if (pid == 0) {
-
+        LastExitCode = 1;
+    } else if (pid == 0) {
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
+        
+        if (input_file) {
+            int fd = open(input_file, O_RDONLY);
+            if (fd < 0) {
+                perror("Input file error");
+                _exit(1);
+            }
+            dup2(fd, STDIN_FILENO);
+            close(fd);
+        }
+        
+        if (output_file) {
+            int fd = open(output_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                perror("Output file error");
+                _exit(1);
+            }
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+        }
+        
         execvp(args[0], args);
-        fprintf(stderr, "Bad Command! '%s'\n", args[0]);
+        fprintf(stderr, "Bad Command! \n");
         _exit(1);
-
-    }else {    
-
+    } else {    
+        // Parent process
         FgPid = pid; 
         int status;
         waitpid(pid, &status, WUNTRACED);
@@ -133,10 +197,16 @@ int main(int argc, char *argv[]) {
 
         buffer[strcspn(buffer, "\n")] = '\0';
 
+        if(buffer[0] == '\0') {
+            continue; // Skip empty lines
+        }
+
 
         if (strcmp(buffer, "!!") == 0) {
             if (latest[0] == '\0') {
-                printf("No Prev Command!\n");
+                if (input == stdin) {
+                    continue;
+                }
                 continue;
             }
             strcpy(execBuffer, latest);
@@ -145,9 +215,6 @@ int main(int argc, char *argv[]) {
             }
 
         }else{
-            if (buffer[0] == '\0') {
-                continue;
-            }
             strcpy(latest, buffer);
             strcpy(execBuffer, buffer);
         }
@@ -164,21 +231,45 @@ int main(int argc, char *argv[]) {
                 fclose(input);
             exit(code);
         }
-        if(strncmp(execBuffer, "echo ", 5) == 0) {
-            if (strcmp(execBuffer + 5, "$?") == 0) {
-            printf("%d\n", LastExitCode);
-            } else {
-            printf("%s\n", execBuffer + 5);
-            LastExitCode = 0;
+
+
+        // if(strncmp(execBuffer, "echo ", 5) == 0) {
+        //     if (strcmp(execBuffer + 5, "$?") == 0) {
+        //     printf("%d\n", LastExitCode);
+        //     } else {
+        //     printf("%s\n", execBuffer + 5);
+        //     LastExitCode = 0;
+        //     }
+        //     continue;
+        // }
+        if (strncmp(execBuffer, "echo", 4) == 0) {
+            if (strchr(execBuffer, '<') || strchr(execBuffer, '>')) {
+                runExternalCommand(execBuffer);
+                continue;
             }
-    continue;
+            if (execBuffer[4] == '\0') {
+                printf("\n");
+                LastExitCode = 0;
+            } else if (execBuffer[4] == ' ') {
+                if (strcmp(execBuffer + 5, "$?") == 0) {
+                    printf("%d\n", LastExitCode);
+                } else {
+                    printf("%s\n", execBuffer + 5);
+                }
+                LastExitCode = 0;
+            } else {
+                printf("bad command\n");
+                LastExitCode = 1;
+            }
+            continue;
         }
 
     
-    runExternalCommand(execBuffer);
+        runExternalCommand(execBuffer);
     }
     if (input != stdin) {
     fclose(input);
     }
+
     return 0;
 }
