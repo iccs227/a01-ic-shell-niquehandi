@@ -7,3 +7,6 @@ Please describe your assumptions and/or implementation here.
 **References:**
 waitpid, wnohang, wuntraced. How do I use these
 https://stackoverflow.com/questions/33508997/waitpid-wnohang-wuntraced-how-do-i-use-these
+
+https://stackoverflow.com/questions/5341220/how-do-i-get-tcsetpgrp-to-work-in-c
+https://stackoverflow.com/questions/64848833/why-the-tcsetpgrp-call-does-not-work-as-expected

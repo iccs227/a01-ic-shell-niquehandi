@@ -1,5 +1,5 @@
 /* ICCS227: Project 1: icsh
- * Name:
+ * Name: Dominique Bachmann
  * StudentID: 6581162
  */
 
@@ -14,41 +14,98 @@
 #include "kirby.h"
 #include "fcntl.h"  
 #include "errno.h"  
+#include "job.h"
 
 pid_t FgPid = -1;
 int LastExitCode = 0;
- 
 
-
-
+void printPrompt() {
+    check_background_jobs();  
+    write(STDOUT_FILENO, "icsh $ ", 7);
+    fflush(stdout);
+}
 
 void ctrlC(int sig) {
     if (FgPid > 0) {
-        kill(FgPid, SIGINT);
+        kill(-FgPid, SIGINT); 
     } else {
-        write(STDOUT_FILENO, "\nicsh $ ", 8);
-        fflush(stdout);
-     }
-}
- 
-void ctrlZ(int sig) {
-    if (FgPid > 0) {
-        kill(FgPid, SIGTSTP);
-    }else {        
         write(STDOUT_FILENO, "\nicsh $ ", 8);
         fflush(stdout);
     }
 }
  
+void ctrlZ(int sig) {
+    if (FgPid > 0) {
+        kill(-FgPid, SIGTSTP); 
+    } else {        
+        write(STDOUT_FILENO, "\nicsh $ ", 8);
+        fflush(stdout);
+    }
+}
+
+static void sigchld_handler(int sig) {
+    int status;
+    pid_t pid;
+    int any_done = 0;
+
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        int idx = find_job_by_pid(pid);
+        if (idx < 0) {
+            continue;
+        }
+
+        dprintf(STDOUT_FILENO,
+                "\n[%d]+  Done                    %s\n",
+                jobs[idx].job_id,
+                jobs[idx].command);
+
+        remove_job(idx);
+        any_done = 1;
+    }
+
+    if (any_done) {
+        dprintf(STDOUT_FILENO, "icsh $ ");
+        fflush(NULL);
+    }
+}
+
+
+
+
+
+
+
+
 void runExternalCommand(char *inputLine) {
     if (inputLine == NULL || inputLine[0] == '\0') 
         return;
-     
+    
+    // Save original command for job tracking
+    // char originalCommand[MAX_CMD_BUFFER];
+    // strncpy(originalCommand, inputLine, MAX_CMD_BUFFER - 1);
+    // originalCommand[MAX_CMD_BUFFER - 1] = '\0';
+
+    int is_background = 0;
+    size_t len = strlen(inputLine);
+
+
+    if (len > 0 && inputLine[len - 1] == '&') {
+        is_background = 1;
+        inputLine[--len] = '\0'; // Remove the '&'
+        while (len > 0 && (inputLine[len - 1] == ' ' || inputLine[len - 1] == '\t')) {
+            inputLine[--len] = '\0'; // Remove trailing spaces or tabs
+        }
+    }
+
+    char originalCommand[MAX_CMD_BUFFER];
+    strncpy(originalCommand, inputLine, MAX_CMD_BUFFER - 1);
+    originalCommand[MAX_CMD_BUFFER - 1] = '\0';
+
+    //parse args and handle redirection
     char *saveptr;
     char *args[MAX_CMD_BUFFER];
     int arg_count = 0;
  
-    //Created a copy of the inputLine for tokenizations
     char input_copy[MAX_CMD_BUFFER];
     strncpy(input_copy, inputLine, MAX_CMD_BUFFER - 1);
     input_copy[MAX_CMD_BUFFER - 1] = '\0';
@@ -59,9 +116,29 @@ void runExternalCommand(char *inputLine) {
         token = strtok_r(NULL, " ", &saveptr);
     }
     args[arg_count] = NULL;
+    
+    //ls aliases
+    if (args[0] && strcmp(args[0], "la") == 0) {
+    args[0] = "ls"; 
+    args[1] = "-la";
+    args[2] = NULL; 
+    arg_count = 2;
+    } else if (args[0] && strcmp(args[0], "ll") == 0) {
+        args[0] = "ls"; 
+        args[1] = "-l";
+        args[2] = NULL; 
+        arg_count = 2;
+
+    } else if (args[0] && strcmp(args[0], "l") == 0) {
+        args[0] = "ls"; 
+        args[1] = "-l";
+        args[2] = NULL; 
+        arg_count = 2;
+    }   
  
     if (arg_count == 0) return;
 
+    // handle redirection parsing 
     char *input_file = NULL;
     char *output_file = NULL;
     int new_arg_count = 0;
@@ -83,20 +160,19 @@ void runExternalCommand(char *inputLine) {
     }
     args[new_arg_count] = NULL; 
 
-
     if(args[0] == NULL) {
         fprintf(stderr, "Error No COMMAND! Specified\n");
         return;
     }
     if (input_file == NULL && strchr(inputLine, '<')) {
-    fprintf(stderr, "Error: Missing redirection file.\n");
-    LastExitCode = 1;
-    return;
+        fprintf(stderr, "Error: Missing redirection file.\n");
+        LastExitCode = 1;
+        return;
     }
     if (output_file == NULL && strchr(inputLine, '>')) {
-    fprintf(stderr, "Error: Missing output redirection file.\n");
-    LastExitCode = 1;
-    return;
+        fprintf(stderr, "Error: Missing output redirection file.\n");
+        LastExitCode = 1;
+        return;
     }
  
     pid_t pid = fork();
@@ -104,9 +180,20 @@ void runExternalCommand(char *inputLine) {
         perror("Fork Failed");
         LastExitCode = 1;
     } else if (pid == 0) {
+        
+        setpgid(0, 0);
+
+        if (!is_background) {
+            tcsetpgrp(STDIN_FILENO, getpid());
+        }
+
         signal(SIGINT, SIG_DFL);
         signal(SIGTSTP, SIG_DFL);
-        
+        signal(SIGQUIT, SIG_DFL);
+        signal(SIGTTOU, SIG_DFL);
+        signal(SIGTTIN, SIG_DFL);
+
+        // Handle redirection
         if (input_file) {
             int fd = open(input_file, O_RDONLY);
             if (fd < 0) {
@@ -131,29 +218,55 @@ void runExternalCommand(char *inputLine) {
         fprintf(stderr, "Bad Command! \n");
         _exit(1);
     } else {    
-        // Parent process
-        FgPid = pid; 
-        int status;
-        waitpid(pid, &status, WUNTRACED);
-        FgPid = -1;   
- 
-        if (WIFEXITED(status))
-            LastExitCode = WEXITSTATUS(status);
-        else if (WIFSIGNALED(status))
-            LastExitCode = 128 + WTERMSIG(status);
-        else if (WIFSTOPPED(status)) {
-            LastExitCode = 128 + WSTOPSIG(status);
-            printf("[%d]+  Stopped\t\t%s\n", pid, inputLine);
+        setpgid(pid, pid);
+        
+        if (is_background) {
+            add_job(pid, originalCommand, 1);
+            LastExitCode = 0;
+        } else {
+            // Fg job, wait for completion
+            FgPid = pid;
+            tcsetpgrp(STDIN_FILENO, pid);
+
+            int status;
+            pid_t result = waitpid(pid, &status, WUNTRACED);
+            
+            //Take back terminal control
+            tcsetpgrp(STDIN_FILENO, getpid());
+            FgPid = -1;
+            
+            if (result == -1) {
+                perror("waitpid failed");
+                LastExitCode = 1;
+            } else if (result > 0) {
+                if (WIFEXITED(status)) {
+                    LastExitCode = WEXITSTATUS(status);
+                } else if (WIFSIGNALED(status)) {
+                    LastExitCode = 128 + WTERMSIG(status);
+                } else if (WIFSTOPPED(status)) {
+                    add_job(pid, originalCommand, 0);
+                    int idx = find_job_by_pid(pid);
+                    if (idx >= 0) {
+                        jobs[idx].status = JOB_STOPPED;
+                        jobs[idx].is_background = 1; // Stopped jobs are background
+                        printf("[%d]+  Stopped                 %s\n", 
+                               jobs[idx].job_id, jobs[idx].command);
+                        fflush(stdout);
+                    } 
+                    LastExitCode = 0;
+                }
+            } 
         }
     }
 }
- 
-void printPrompt() {
-    write(STDOUT_FILENO, "icsh $ ", 7);
-    fflush(stdout);
-}
- 
 int main(int argc, char *argv[]) {
+    pid_t shell_pgid = getpid();
+
+    setpgid(shell_pgid, shell_pgid);        
+    tcsetpgrp(STDIN_FILENO, shell_pgid);    
+    signal(SIGTTIN, SIG_IGN);                
+    signal(SIGTTOU, SIG_IGN);
+    signal(SIGQUIT, SIG_IGN);                
 
 
     //signal handlers
@@ -165,6 +278,13 @@ int main(int argc, char *argv[]) {
     
     sa.sa_handler = ctrlZ;
     sigaction(SIGTSTP, &sa, NULL);
+
+    struct sigaction sa_chld;
+    memset(&sa_chld, 0, sizeof(sa_chld));
+    sa_chld.sa_handler   = sigchld_handler;
+    sigemptyset(&sa_chld.sa_mask);
+    sa_chld.sa_flags     = SA_RESTART;   
+    sigaction(SIGCHLD,   &sa_chld, NULL);
     
     StartMsg();
     char buffer[MAX_CMD_BUFFER];
@@ -198,26 +318,31 @@ int main(int argc, char *argv[]) {
         buffer[strcspn(buffer, "\n")] = '\0';
 
         if(buffer[0] == '\0') {
-            continue; // Skip empty lines
+            continue; 
         }
 
 
-        if (strcmp(buffer, "!!") == 0) {
+        if (strncmp(buffer, "!!", 2) == 0) {
             if (latest[0] == '\0') {
-                if (input == stdin) {
-                    continue;
-                }
-                continue;
+                continue; 
             }
-            strcpy(execBuffer, latest);
-            if (input == stdin) {
-               printf("%s\n", execBuffer);
-            }
+            const char *lastC = buffer + 2;
+            execBuffer[0] = '\0'; 
 
-        }else{
+            strncat(execBuffer, latest, MAX_CMD_BUFFER - 1);
+            strncat(execBuffer, lastC, MAX_CMD_BUFFER - strlen(execBuffer) - 1);
+
+            if (input == stdin) {
+                printf("%s\n", execBuffer);
+            }
+        } 
+        else 
+        {
             strcpy(latest, buffer);
             strcpy(execBuffer, buffer);
         }
+        
+
 
         if (strncmp(execBuffer, "exit", 4) == 0 &&
             (execBuffer[4] == '\0' || execBuffer[4] == ' ')) {
@@ -231,17 +356,23 @@ int main(int argc, char *argv[]) {
                 fclose(input);
             exit(code);
         }
+        if(strncmp(execBuffer, "jobs", 4) == 0 && 
+            (execBuffer[4] == '\0' || execBuffer[4] == ' ')) {
+            handle_jobs_command();
+            continue;
+        }
+        if (strncmp(execBuffer, "fg", 2) == 0 && 
+            (execBuffer[2] == '\0' || execBuffer[2] == ' ')) {
+            handle_fg_command(execBuffer);
+            continue;
+        }
+        if (strncmp(execBuffer, "bg", 2) == 0 &&
+            (execBuffer[2] == '\0' || execBuffer[2] == ' ')) {
+            handle_bg_command(execBuffer);
+            continue;
+        }
 
 
-        // if(strncmp(execBuffer, "echo ", 5) == 0) {
-        //     if (strcmp(execBuffer + 5, "$?") == 0) {
-        //     printf("%d\n", LastExitCode);
-        //     } else {
-        //     printf("%s\n", execBuffer + 5);
-        //     LastExitCode = 0;
-        //     }
-        //     continue;
-        // }
         if (strncmp(execBuffer, "echo", 4) == 0) {
             if (strchr(execBuffer, '<') || strchr(execBuffer, '>')) {
                 runExternalCommand(execBuffer);
