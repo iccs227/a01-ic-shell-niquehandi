@@ -10,3 +10,16 @@ https://stackoverflow.com/questions/33508997/waitpid-wnohang-wuntraced-how-do-i-
 
 https://stackoverflow.com/questions/5341220/how-do-i-get-tcsetpgrp-to-work-in-c
 https://stackoverflow.com/questions/64848833/why-the-tcsetpgrp-call-does-not-work-as-expected
+
+
+**Milestone 7**
+
+
+*endin* command that lists all files ending with a specified extension (like .c, .h, .txt) is a useful little utility for your shell.
+Example:
+icsh $ endin .c
+icsh.c
+job.c
+kirby.c
+endin.c
+icsh $ 
