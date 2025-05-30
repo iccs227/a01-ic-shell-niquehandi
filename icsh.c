@@ -15,6 +15,8 @@
 #include "fcntl.h"  
 #include "errno.h"  
 #include "job.h"
+#include "endin.h"
+
 
 pid_t FgPid = -1;
 int LastExitCode = 0;
@@ -393,6 +395,16 @@ int main(int argc, char *argv[]) {
                 LastExitCode = 1;
             }
             continue;
+        }
+
+        if(strncmp(execBuffer, "endin", 5) == 0 
+        
+        &&    (execBuffer[5] == '\0' || execBuffer[5] == ' ')){
+            const char *arg = execBuffer + 5;
+            while(*arg == ' ' ) arg++;
+            cmd_endin(arg);
+            continue;
+            
         }
 
     

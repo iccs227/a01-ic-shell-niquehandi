@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -g
 BINARY = icsh
-OBJS = icsh.o job.o kirby.o
+OBJS = icsh.o job.o kirby.o endin.o    
 
 all: $(BINARY)
 
