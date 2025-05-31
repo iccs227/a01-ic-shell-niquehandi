@@ -21,7 +21,11 @@ Example:
 icsh $ endin .c
 
 icsh.c
+
 job.c
+
 kirby.c
+
 endin.c
+
 icsh $ 
