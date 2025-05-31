@@ -15,7 +15,7 @@ https://stackoverflow.com/questions/64848833/why-the-tcsetpgrp-call-does-not-wor
 **Milestone 7**
 
 
-*endin* command that lists all files ending with a specified extension (like .c, .h, .txt) is a useful little utility shell.
+*endin* command that lists all files ending with a specified extension (like .c, .h, .txt) is a useful little utility for shell shell.
 
 Example:
 icsh $ endin .c
